@@ -1,0 +1,2 @@
+./salvo semaforo
+./prova 1
