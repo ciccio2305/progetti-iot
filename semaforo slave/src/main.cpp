@@ -1,8 +1,9 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <string>
+#include "painlessmesh.h"
 
-const char* id ="2";
+const char* id ="1";
 
 #define RED_LED 3
 #define YELLOW_LED 4
@@ -10,7 +11,6 @@ const char* id ="2";
 
 #define DELAY_3SECONDS 3000
 #define DELAY_1_5SECONDS 1500
-
 
 typedef enum {
   IDLE,
@@ -56,30 +56,59 @@ void greenOn(uint16_t del)
   ledOnLedsOff(GREEN_LED, RED_LED, YELLOW_LED, del);
 }
 
+//Scheduler sched; //scheduler azioni semaforo
+WiFiClient client; 
+int turni=0;
+
+// void handle_semaphore();
+// Task taskSemaphore(TASK_MILLISECOND * 1, TASK_FOREVER, &handle_semaphore);
+
+// void handle_semaphore(){
+//   if (client.available()) {
+//         String c = client.readString();
+//         Serial.print("ricevuto:");
+//         Serial.println(c.c_str());
+
+//         if(strstr(c.c_str(),"master")!=NULL){
+//           Serial.println("messaggio di presentazione");
+//         }
+//         else if(strstr(c.c_str(),"rosso")!=NULL){
+//           Serial.println("divento rosso");
+//           client.println("ok");
+//           redOn(0);
+//         }
+//         else if(strstr(c.c_str(),"verde")!=NULL){
+//           Serial.println("divento verde");
+//           client.println("ok");
+//           greenOn(0);
+//         }
+//         else if(strstr(c.c_str(),"giallo")!=NULL){
+//           Serial.println("divento giallo");
+//           client.println("ok");
+//           yellowOn(0);
+//         }
+//         turni=0;
+//       }
+// }
+
 int status = WL_IDLE_STATUS;
 
-WiFiClient client;
 WiFiServer server(80);
 
-bool send_msg_to_server(IPAddress dest,const char* msg){
-  WiFiClient client_sender;
-  client_sender.connect( dest, 80);
-  delay(200);
+bool send_msg_to_server(WiFiClient dest,const char* msg){
   int counter=0;
   while(counter<10){
-    if(client_sender.connected()){
+    if(dest.connected()){
       Serial.print("invio msg:");
       Serial.println(msg);
-
-      client_sender.println(msg);
-      client_sender.stop();
+      
+      dest.println(msg);
       return true;
     }else{
       counter++;
       delay(50);
     }
  }
- client_sender.stop();
  Serial.println("msg failed");
  return false;
 }
@@ -116,28 +145,29 @@ void setup() {
 
 
   Serial.println(WiFi.localIP());
+
   server.begin();
+  client.connect(WiFi.gatewayIP(),80);
+
+  // sched.init();
+  // sched.addTask( taskSemaphore );
+  // sched.enableAll();
   
-  Serial.println("server avviato");
-  send_msg_to_server(WiFi.gatewayIP(),id);
+  //taskSemaphore.enable();
+  
+  send_msg_to_server(client,id);
   all_off(0);
+  
   Serial.println("setup finita");
 }
 
-
-int turni=0;
-
 void loop() {
   //stampa il messaggio che il client mi invia 
-  WiFiClient client2 = server.available();
-  if (client2) {
-    Serial.println(client2.remoteIP());
-    Serial.println("New Client");
-    while (client2.connected()){
-      
-      if(client2.available()){
-        Serial.println();
-        String c = client2.readString();
+  //WiFiClient client2 = server.available();
+  //sched.execute();
+  
+  if (client.available()) {
+        String c = client.readString();
         Serial.print("ricevuto:");
         Serial.println(c.c_str());
 
@@ -146,28 +176,23 @@ void loop() {
         }
         else if(strstr(c.c_str(),"rosso")!=NULL){
           Serial.println("divento rosso");
+          //client.println("ok");
           redOn(0);
         }
         else if(strstr(c.c_str(),"verde")!=NULL){
           Serial.println("divento verde");
+          //client.println("ok");
           greenOn(0);
         }
         else if(strstr(c.c_str(),"giallo")!=NULL){
           Serial.println("divento giallo");
+          //client.println("ok");
           yellowOn(0);
         }
         turni=0;
-        break;
       }
-      else{
-        Serial.print(".");
-        delay(100);
-      }
-    }
-    client.stop();
-    Serial.println("Client Disconnected.");
-  }
-  if(turni==1000000){
+  
+  if(turni==3000000){
     Serial.println("il master si è rotto");
     
     bool flag=true;
@@ -185,7 +210,8 @@ void loop() {
       delay(500);
       // don't do anything else:
     }
-    send_msg_to_server(WiFi.gatewayIP(),id);
+    client.connect(WiFi.gatewayIP(),80);
+    send_msg_to_server(client,id);
     turni=0;
   }
   turni++;
