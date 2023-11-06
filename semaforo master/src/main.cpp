@@ -1,7 +1,6 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <string>
-#include "painlessmesh.h"
 
 #define id "3"
 
@@ -12,9 +11,7 @@
 #define DELAY_3SECONDS 3000
 #define DELAY_1_5SECONDS 1500
 
-#define TEMPO_VERDE TASK_MILLISECOND*4000
-#define TEMPO_GIALLO TASK_MILLISECOND*2000
-#define TEMPO_TUTTI_ROSSI TASK_MILLISECOND*500
+
 
 typedef enum {
   IDLE,
@@ -35,57 +32,46 @@ void ledOnLedsOff(uint8_t high, uint8_t low1, uint8_t low2, uint16_t del)
 
 void redOn(uint16_t del) 
 {
-  //Serial.printf("Red light on for %.2f seconds\n", (float)del/1000);
+  Serial.printf("Red light on for %.2f seconds\n", (float)del/1000);
   ledOnLedsOff(RED_LED, YELLOW_LED, GREEN_LED, del);
 }
 
 void yellowOn(uint16_t del)
 {
-  //Serial.printf("Yellow light on for %.2f seconds\n", (float)del/1000);
+  Serial.printf("Yellow light on for %.2f seconds\n", (float)del/1000);
   ledOnLedsOff(YELLOW_LED, RED_LED, GREEN_LED, del);
 }
 
 void greenOn(uint16_t del)
 {
-  //Serial.printf("Green light on for %.2f seconds\n", (float)del/1000);
+  Serial.printf("Green light on for %.2f seconds\n", (float)del/1000);
   ledOnLedsOff(GREEN_LED, RED_LED, YELLOW_LED, del);
 }
 
-
-Scheduler sched;
-void handle_semaphore();
-Task taskSemaphore(TASK_MILLISECOND * 1, TASK_FOREVER, &handle_semaphore);
 
 WiFiServer server(80);
 
 WiFiClient client;
 
-enum stati{
-  VERDE,
-  GIALLO,
-  ROSSO,
-  ALTRI_VERDE,
-  ALTRI_GIALLO,
-  ALTRI_ROSSO
-};
-
-stati stato= VERDE;
-
-bool send_msg_to_server(WiFiClient dest,const char* msg){
+bool send_msg_to_server(IPAddress dest,const char* msg){
+  WiFiClient client_sender;
+  client_sender.connect( dest, 80);
   delay(200);
   int counter=0;
   while(counter<10){
-    if(dest.connected()){
+    if(client_sender.connected()){
       Serial.print("invio msg:");
       Serial.println(msg);
       
-      dest.println(msg);
+      client_sender.println(msg);
+      client_sender.stop();
       return true;
     }else{
       counter++;
       delay(50);
     }
  }
+ client_sender.stop();
  Serial.println("msg failed");
  return false;
 }
@@ -104,25 +90,20 @@ void setup() {
   WiFi.softAP("semaforo1", "semaforo1234");
   greenOn(0);
 
-  sched.init();
-  sched.addTask( taskSemaphore );
-  taskSemaphore.enable();
-
   server.begin();
+  
 }
 
-WiFiClient peer[3];
-bool map_peer[3]={false,false,false};
+IPAddress* peer[3]={nullptr,nullptr,nullptr};
 
 int peer_connessi=0;
 int turni=0;
 void loop() {
-
-  client=server.available();
+  WiFiClient client = server.available();
 
   if (client) {
     Serial.println("New Client.");
-
+    String currentLine = "";
     while (client.connected()) {
       if (client.available()) {
         String c = client.readString();
@@ -134,180 +115,116 @@ void loop() {
           Serial.println("sconosciuto");
           break;
         }
-        
-        if(map_peer[id_]){
+        if(peer[id_]!=nullptr){
           Serial.println("peer gia presente lo sostituisco con quello nuovo");
           peer_connessi--;
         }
-        map_peer[id_]=true;
-        peer[id_]=client;
+        peer[id_]=new IPAddress(client.remoteIP());
         peer_connessi++;
-        send_msg_to_server(client,"ciao sono il master");
-        send_msg_to_server(client,"diventa rosso");
+        send_msg_to_server(client.remoteIP(),"ciao sono il master");
+        send_msg_to_server(client.remoteIP(),"diventa rosso");
         break; 
       }
     }
-    Serial.println("Client aggiunto.");
+    client.stop();
+    Serial.println("Client Disconnected.");
   }
 
-
-  sched.execute();
-}
-
-void handle_semaphore(){
-  //taskSemaphore.disable();
   bool status_last=false;
+  if(turni==1){
+    Serial.println("verde");
+    if(peer[1]!=nullptr)
+      status_last=send_msg_to_server(*peer[1],"diventa verde");
+    if(!status_last){
+      peer[1]=nullptr;
+      peer_connessi--;
+    }
+    delay(1100);
+    greenOn(0);
+  }
   
+  if(turni==200000){
+    Serial.println("giallo");
+    if(peer[1]!=nullptr)
+    status_last=send_msg_to_server(*peer[1],"diventa giallo");
+    if(!status_last){
+      peer[1]=nullptr;
+      peer_connessi--;
+    }
+    delay(1100);
+    yellowOn(0);
+  }
 
-  switch (stato){
-    
-    case VERDE:{
-      Serial.println("VERDE");
-      if(map_peer[1]){
-        status_last=send_msg_to_server(peer[1],"diventa verde");
-      }
-      if(!status_last){
-        map_peer[1]=false;
-        peer_connessi--;
-      }
-      greenOn(0);
+  if(turni==300000){
+    Serial.println("rosso");
+    if(peer[1]!=nullptr)
+    status_last=send_msg_to_server(*peer[1],"diventa rosso");
+    if(!status_last){
+      peer[1]=nullptr;
+      peer_connessi--;
+    }
+    delay(1100);
+    redOn(0);
+  }
 
-      stato=GIALLO;
+  if(turni==350000){
 
-      taskSemaphore.delay(TEMPO_VERDE);//tempo verde
-      break;
+    if(peer[0]!=nullptr)
+    status_last=send_msg_to_server(*peer[0],"diventa verde");
+    if(!status_last){
+      peer[0]=nullptr;
+      peer_connessi--;
     }
       
-    case GIALLO:{
-      Serial.println("giallo");
-      if(map_peer[1]){
-        //peer[1].readString();
-        status_last=send_msg_to_server(peer[1],"diventa giallo");
-        // while(!peer[1].available() && status_last){
-        //   delay(50);
-        // }
-        // peer[1].readString();
-      }
-        
-      if(!status_last){
-        map_peer[1]=false;
-        peer_connessi--;
-      }
-      
-      yellowOn(0);
-
-      stato=ROSSO;
-
-      taskSemaphore.delay(TEMPO_GIALLO);//tempo giallo
-
-      break;
+    if(peer[2]!=nullptr)
+    status_last=send_msg_to_server(*peer[2],"diventa verde");
+    if(!status_last){
+      peer[2]=nullptr;
+      peer_connessi--;
     }
-    
-    case ROSSO:{
-      Serial.println("rosso");
+  }
 
-      if(map_peer[1]){
-        //peer[1].readString();
-        status_last=send_msg_to_server(peer[1],"diventa rosso");
-        // while(!peer[1].available() && status_last){
-        //   delay(50);
-        // }
-        // peer[1].readString();
-      }
-        
-      if(!status_last){
-        map_peer[1]=false;
-        peer_connessi--;
-      }
-      
-      //delay(1000);
-      
-      redOn(0);
-      
-      stato=ALTRI_VERDE;
-
-      taskSemaphore.delay(TEMPO_TUTTI_ROSSI); //forse non serve
-      break;
+  if(turni==550000){
+    if(peer[0]!=nullptr)
+    status_last=send_msg_to_server(*peer[0],"diventa giallo");
+    if(!status_last){
+      peer[0]=nullptr;
+      peer_connessi--;
     }
-    
-    case ALTRI_VERDE:{
-      Serial.println("invio agli altri di diventare verde");
       
-      if(map_peer[0])
-        status_last=send_msg_to_server(peer[0],"diventa verde");
-
-      if(!status_last){
-        map_peer[0]=false;
-        peer_connessi--;
-      }
-
-      status_last=false;
-      if(map_peer[2])
-        status_last=send_msg_to_server(peer[2],"diventa verde");
-      if(!status_last){
-        map_peer[2]=false;
-        peer_connessi--;
-      }
-      
-      stato=ALTRI_GIALLO;
-
-      taskSemaphore.delay(TEMPO_VERDE);//tempo verde secondo
-      break;
+    if(peer[2]!=nullptr)
+    status_last=send_msg_to_server(*peer[2],"diventa giallo");
+    if(!status_last){
+      peer[2]=nullptr;
+      peer_connessi--;
     }
 
-    case ALTRI_GIALLO:{
-       Serial.println("invio agli altri di diventare gialli");
+  }
 
-        if(map_peer[0]){
-          status_last=send_msg_to_server(peer[0],"diventa giallo");
-        }
-
-        if(!status_last){
-          map_peer[0]=false;
-          peer_connessi--;
-        }
-        
-        status_last=false;
-        if(map_peer[2])
-        status_last=send_msg_to_server(peer[2],"diventa giallo");
-        if(!status_last){
-          map_peer[2]=false;
-          peer_connessi--;
-        }
-
-        stato=ALTRI_ROSSO;
-      
-        taskSemaphore.delay(TEMPO_GIALLO);//tempo giallo secondo
-
-
-        break;
+  if(turni==650000){
+    if(peer[0]!=nullptr)
+    status_last=send_msg_to_server(*peer[0],"diventa rosso");
+    if(!status_last){
+      peer[0]=nullptr;
+      peer_connessi--;
     }
-
-    case ALTRI_ROSSO:{
+  
+    if(peer[2]!=nullptr)
+    status_last=send_msg_to_server(*peer[2],"diventa rosso");
+    if(!status_last){
+      peer[2]=nullptr;
+      peer_connessi--;
+    }
       
-      Serial.println("invio agli altri di diventare Rosso");
+  }
 
-      if(map_peer[0])
-      status_last=send_msg_to_server(peer[0],"diventa rosso");
-      if(!status_last){
-        map_peer[0]=false;
-        peer_connessi--;
-      }
-
-      status_last=false;
-      if(map_peer[2])
-      status_last=send_msg_to_server(peer[2],"diventa rosso");
-      if(!status_last){
-        map_peer[2]=false;
-        peer_connessi--;
-      }
-      
-      stato=VERDE;
-
-      taskSemaphore.delay(TEMPO_TUTTI_ROSSI);//forse non serve
-      break;
-    } 
+  if(turni==700000){
+    Serial.println("reset");
+    turni=0;
   }
 
 
+  turni++;
+  
+  //semaphore();
 }
