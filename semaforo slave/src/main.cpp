@@ -3,6 +3,8 @@
 #include <string>
 #include "painlessmesh.h"
 
+#include "BluetoothSerial.h"
+
 const char* id ="1";
 
 #define RED_LED 3
@@ -56,63 +58,27 @@ void greenOn(uint16_t del)
   ledOnLedsOff(GREEN_LED, RED_LED, YELLOW_LED, del);
 }
 
-//Scheduler sched; //scheduler azioni semaforo
-WiFiClient client; 
 int turni=0;
 
 // void handle_semaphore();
-// Task taskSemaphore(TASK_MILLISECOND * 1, TASK_FOREVER, &handle_semaphore);
-
-// void handle_semaphore(){
-//   if (client.available()) {
-//         String c = client.readString();
-//         Serial.print("ricevuto:");
-//         Serial.println(c.c_str());
-
-//         if(strstr(c.c_str(),"master")!=NULL){
-//           Serial.println("messaggio di presentazione");
-//         }
-//         else if(strstr(c.c_str(),"rosso")!=NULL){
-//           Serial.println("divento rosso");
-//           client.println("ok");
-//           redOn(0);
-//         }
-//         else if(strstr(c.c_str(),"verde")!=NULL){
-//           Serial.println("divento verde");
-//           client.println("ok");
-//           greenOn(0);
-//         }
-//         else if(strstr(c.c_str(),"giallo")!=NULL){
-//           Serial.println("divento giallo");
-//           client.println("ok");
-//           yellowOn(0);
-//         }
-//         turni=0;
-//       }
-// }
 
 int status = WL_IDLE_STATUS;
 
-WiFiServer server(80);
+bool MasterConnected;
 
-bool send_msg_to_server(WiFiClient dest,const char* msg){
-  int counter=0;
-  while(counter<10){
-    if(dest.connected()){
-      Serial.print("invio msg:");
-      Serial.println(msg);
-      
-      dest.println(msg);
-      return true;
-    }else{
-      counter++;
-      delay(50);
-    }
- }
- Serial.println("msg failed");
- return false;
+void Bt_Status (esp_spp_cb_event_t event, esp_spp_cb_param_t *param) {
+
+  if (event == ESP_SPP_SRV_OPEN_EVT) { 
+    Serial.println ("Client Connected");
+    MasterConnected = true;
+  }
+  else if (event == ESP_SPP_CLOSE_EVT ) {
+    Serial.println ("Client Disconnected");
+    MasterConnected = false;
+  }
 }
 
+BluetoothSerial SerialBT;
 
 void setup() {
   // inizializzazione della seriale <-> baudrate 115200
@@ -123,42 +89,11 @@ void setup() {
   pinMode(YELLOW_LED, OUTPUT);
   pinMode(GREEN_LED, OUTPUT);
 
-  //manageWiFiEvents();
-  WiFi.mode(WIFI_STA);
-  status = WiFi.begin("semaforo1", "semaforo1234");
-
-  bool flag=true;
-  yellowOn(0);
-  while ( WiFi.status() != WL_CONNECTED) {
-    Serial.print(".");
-    
-    if(flag){
-      yellowOn(0);
-      flag=!flag;
-    }else{
-      all_off(0);
-      flag=!flag;
-    }
-    delay(500);
-    // don't do anything else:
-  }
-
-
-  Serial.println(WiFi.localIP());
-
-  server.begin();
-  client.connect(WiFi.gatewayIP(),80);
-
-  // sched.init();
-  // sched.addTask( taskSemaphore );
-  // sched.enableAll();
   
-  //taskSemaphore.enable();
-  
-  send_msg_to_server(client,id);
-  all_off(0);
-  
-  Serial.println("setup finita");
+  SerialBT.register_callback(Bt_Status);
+  String name="due";
+  SerialBT.begin(name);
+  Serial.println(SerialBT.getBtAddressString());
 }
 
 void loop() {
@@ -166,8 +101,8 @@ void loop() {
   //WiFiClient client2 = server.available();
   //sched.execute();
   
-  if (client.available()) {
-        String c = client.readString();
+  if (SerialBT.available()) {
+        String c = SerialBT.readString();
         Serial.print("ricevuto:");
         Serial.println(c.c_str());
 
@@ -189,30 +124,5 @@ void loop() {
           //client.println("ok");
           yellowOn(0);
         }
-        turni=0;
       }
-  
-  if(turni==3000000){
-    Serial.println("il master si è rotto");
-    
-    bool flag=true;
-    yellowOn(0);
-    while ( WiFi.status() != WL_CONNECTED) {
-      Serial.print(".");
-      WiFi.begin("semaforo1", "semaforo1234");
-      if(flag){
-        yellowOn(0);
-        flag=!flag;
-      }else{
-        all_off(0);
-        flag=!flag;
-      }
-      delay(500);
-      // don't do anything else:
-    }
-    client.connect(WiFi.gatewayIP(),80);
-    send_msg_to_server(client,id);
-    turni=0;
-  }
-  turni++;
 }
