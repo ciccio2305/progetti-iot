@@ -74,8 +74,11 @@ BluetoothSerial SerialBT;
 bool send_msg_to_server(uint8_t* dest,const char* msg){
   bool status=SerialBT.connect(dest);
   if(status){
-    while(!SerialBT.connected())
+    while(!SerialBT.connected()){
+    }
+
     SerialBT.println(msg);
+    delay(200);
     SerialBT.disconnect();
   } 
   return status;
@@ -108,6 +111,9 @@ void setup() {
 
   //manageWiFiEvents();
 
+  sched.init();
+  sched.addTask( taskSemaphore );
+  taskSemaphore.enable();
 
   SerialBT.register_callback(Bt_Status);
   SerialBT.begin(name, true);
@@ -117,9 +123,9 @@ void setup() {
 }
 
 bool map_peer[3]={true,true,true};
-u_int8_t peer[3][6]={ {0x64,0xB7,0x08,0x8C,0x3A,0x9A},
-                      {0x64,0xB7,0x08,0x8C,0x3A,0x9A},
-                      {0x64,0xB7,0x08,0x8C,0x3A,0x9A}};
+u_int8_t peer[3][6]={ {0x4c,0x75,0x25,0xa7,0x7a,0x08},
+                      {0x64,0xB7,0x08,0x8C,0x3E,0xAA},
+                      {0x64,0xB7,0x08,0x8C,0x3B,0x52}};
 
 int turni=0;
 void loop() {

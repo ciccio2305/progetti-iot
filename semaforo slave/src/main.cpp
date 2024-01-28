@@ -100,7 +100,6 @@ void loop() {
   //stampa il messaggio che il client mi invia 
   //WiFiClient client2 = server.available();
   //sched.execute();
-  
   if (SerialBT.available()) {
         String c = SerialBT.readString();
         Serial.print("ricevuto:");

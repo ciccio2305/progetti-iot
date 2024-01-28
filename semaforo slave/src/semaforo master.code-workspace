@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"name": "semaforo master",
+			"path": "../../semaforo master"
+		},
+		{
+			"name": "semaforo slave",
+			"path": ".."
+		}
+	],
+	"settings": {}
+}
